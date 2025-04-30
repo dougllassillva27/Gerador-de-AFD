@@ -52,8 +52,6 @@ A aplicação permite que o usuário informe dados do empregador e do empregado,
    ```bash
    git clone https://github.com/seu-usuario/gerador-afd-portaria.git
    ```
-2. Coloque os arquivos em um servidor local (ex: XAMPP, WAMP ou PHP embutido).
-3. Acesse `index.php` via navegador.
 
 ## Licença
 
