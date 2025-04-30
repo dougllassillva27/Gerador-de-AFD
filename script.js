@@ -4,17 +4,48 @@ function updateIdLabel() {
   idLabel.textContent = idType === 'pis' ? 'PIS do Empregado' : 'CPF do Empregado';
 }
 
+// Abrir o calendário ao clicar no campo de data
+document.getElementById('startDate').addEventListener('click', function () {
+  try {
+    this.showPicker();
+  } catch (e) {
+    // Fallback para navegadores que não suportam showPicker
+    this.focus();
+  }
+});
+
 document.getElementById('afdForm').addEventListener('submit', function (e) {
   e.preventDefault();
   generateAfd();
 });
 
+function calculateCRC16(data) {
+  let crc = 0xffff;
+  const polynomial = 0xa001;
+
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data.charCodeAt(i);
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x0001) {
+        crc = (crc >> 1) ^ polynomial;
+      } else {
+        crc >>= 1;
+      }
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
 function generateAfd() {
   const idType = document.getElementById('idType').value;
-  const identifier = document.getElementById('identifier').value.padStart(idType === 'pis' ? 12 : 14, '0');
+  const identifier = document.getElementById('identifier').value.padStart(idType === 'pis' ? 12 : 12, '0');
   const employerName = document.getElementById('employerName').value.padEnd(150, ' ');
   const employerCnpj = document.getElementById('employerCnpj').value.padStart(14, '0');
   const repNumber = document.getElementById('repNumber').value.padStart(17, '0');
+  // Processar data inicial sem fuso horário
+  const startDateInput = document.getElementById('startDate').value;
+  const [year, month, day] = startDateInput.split('-').map(Number);
+  const startDate = new Date(year, month - 1, day);
   const days = parseInt(document.getElementById('days').value);
   const entry1 = document.getElementById('entry1').value.replace(':', '');
   const exit1 = document.getElementById('exit1').value.replace(':', '');
@@ -25,8 +56,7 @@ function generateAfd() {
   let records = [];
   let recordCounts = { type2: 0, type3: 0, type4: 0, type5: 0, type6: 0, type7: 0 };
 
-  // Data inicial e final
-  const startDate = new Date('2025-01-01');
+  // Data final
   const endDate = new Date(startDate);
   endDate.setDate(startDate.getDate() + days - 1);
 
@@ -81,19 +111,29 @@ function generateAfd() {
   } else {
     // Portaria 671 (REP-C)
     // Cabeçalho (tipo 1)
-    const header = [
-      '000000000', // Campo 1
-      '1', // Campo 2
-      '1', // Campo 3 (CNPJ)
-      employerCnpj, // Campo 4
-      ''.padStart(14, '0'), // Campo 5 (CNO/CAEPF)
-      employerName, // Campo 6
-      repNumber, // Campo 7
-    ].join('');
-    records.push(header);
+    const generationDateTime = formatDateTime671Full(new Date());
+    const headerFields = [
+      '000000000', // Campo 1: NSR
+      '1', // Campo 2: Tipo do registro
+      '1', // Campo 3: Tipo de identificador (CNPJ)
+      employerCnpj, // Campo 4: CNPJ
+      ''.padStart(14, '0'), // Campo 5: CNO/CAEPF
+      employerName, // Campo 6: Razão social
+      repNumber, // Campo 7: Número de fabricação
+      formatDate671(startDate), // Campo 8: Data inicial
+      formatDate671(endDate), // Campo 9: Data final
+      generationDateTime, // Campo 10: Data e hora da geração
+      '003', // Campo 11: Versão do leiaute
+      '1', // Campo 12: Tipo de identificador do fabricante
+      '98765432000195', // Campo 13: CNPJ do fabricante
+      'REP-C EXEMPLO'.padEnd(30, ' '), // Campo 14: Modelo
+      '', // Campo 15: CRC-16
+    ];
+    const headerWithoutCRC = headerFields.slice(0, -1).join('');
+    headerFields[14] = calculateCRC16(headerWithoutCRC).padStart(4, '0');
+    records.push(headerFields.join(''));
 
-    // Marcações (tipo 7)
-    let previousHash = '';
+    // Marcações (tipo 3)
     for (let i = 0; i < days; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(startDate.getDate() + i);
@@ -103,25 +143,17 @@ function generateAfd() {
       for (let j = 0; j < times.length; j++) {
         const time = times[j];
         const record = [
-          nsr.toString().padStart(9, '0'), // Campo 1
-          '7', // Campo 2
-          `${dateTimeStr}${time}:00-0300`, // Campo 3
-          identifier.padStart(12, '0'), // Campo 4
-          `${dateTimeStr}${time}:00-0300`, // Campo 5
-          '01', // Campo 6 (aplicativo mobile)
-          '0', // Campo 7 (on-line)
-          '', // Campo 8 (hash, será calculado)
+          nsr.toString().padStart(9, '0'), // Campo 1: NSR
+          '3', // Campo 2: Tipo do registro
+          `${dateTimeStr}${time}:00-0300`, // Campo 3: Data e hora
+          identifier, // Campo 4: CPF
+          '', // Campo 5: CRC-16
         ];
-
-        // Calcular hash SHA-256
-        const hashInput = record.slice(0, -1).join('') + previousHash;
-        const hash = sha256(hashInput).toUpperCase();
-        record[7] = hash.padEnd(64, ' ');
-        previousHash = hash;
-
+        const recordWithoutCRC = record.slice(0, -1).join('');
+        record[4] = calculateCRC16(recordWithoutCRC).padStart(4, '0');
         records.push(record.join(''));
         nsr++;
-        recordCounts.type7++;
+        recordCounts.type3++;
       }
     }
 
@@ -154,9 +186,26 @@ function formatTime1510(date) {
   return `${hours}${minutes}`;
 }
 
+function formatDate671(date) {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
 function formatDateTime671(date) {
   const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
   return `${year}-${month}-${day}T`;
+}
+
+function formatDateTime671Full(date) {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}-0300`;
 }

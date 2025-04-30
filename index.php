@@ -49,6 +49,11 @@ $base = '/Secullum/Gerador-de-AFD'; // sem /public_html
         </div>
 
         <div class="form-group">
+          <label for="startDate">Data Inicial dos Registros</label>
+          <input type="date" id="startDate" value="2025-01-01" required />
+        </div>
+
+        <div class="form-group">
           <label for="days">Quantidade de Dias</label>
           <input type="number" id="days" min="1" value="1" required />
         </div>
@@ -76,7 +81,5 @@ $base = '/Secullum/Gerador-de-AFD'; // sem /public_html
       </form>
     </div>    
   </body>
-
   <script src="<?= versao("$base/script.js") ?>"></script>
-
 </html>
