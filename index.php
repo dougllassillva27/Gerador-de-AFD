@@ -59,7 +59,7 @@ $base = '/Secullum/Gerador-de-AFD'; // sem /public_html
         </div>
 
         <div class="time-grid">
-          <div class="form-group">
+           <div class="form-group">
             <label for="entry1">Hora Entrada 1 (HH:MM)</label>
             <input type="time" id="entry1" value="08:00" required />
           </div>
@@ -68,12 +68,12 @@ $base = '/Secullum/Gerador-de-AFD'; // sem /public_html
             <input type="time" id="exit1" value="12:00" required />
           </div>
           <div class="form-group">
-            <label for="entry2">Hora Entrada 2 (HH:MM)</label>
-            <input type="time" id="entry2" value="13:00" required />
+            <label for="entry2">Hora Entrada 2 (HH:MM) - Opcional</label>
+            <input type="time" id="entry2" value="13:00" />
           </div>
           <div class="form-group">
-            <label for="exit2">Hora Saída 2 (HH:MM)</label>
-            <input type="time" id="exit2" value="17:00" required />
+            <label for="exit2">Hora Saída 2 (HH:MM) - Opcional</label>
+            <input type="time" id="exit2" value="17:00" />
           </div>
         </div>
 
