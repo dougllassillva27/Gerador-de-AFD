@@ -4,8 +4,7 @@
  */
 function updateIdLabel() {
   const idType = document.getElementById('idType').value;
-  const idLabel = document.getElementById('idLabel');
-  idLabel.textContent = idType === 'pis' ? 'PIS do Empregado' : 'CPF do Empregado';
+  document.getElementById('idLabel').textContent = idType === 'pis' ? 'PIS do Empregado' : 'CPF do Empregado';
 }
 
 /**
@@ -14,10 +13,9 @@ function updateIdLabel() {
  */
 document.getElementById('startDate').addEventListener('click', function () {
   try {
-    this.showPicker();
+    this.showPicker(); // Tenta abrir o seletor de data
   } catch (e) {
-    // Fallback para navegadores que não suportam showPicker()
-    this.focus();
+    this.focus(); // Caso o navegador não suporte showPicker(), dá foco ao campo
   }
 });
 
@@ -26,8 +24,8 @@ document.getElementById('startDate').addEventListener('click', function () {
  * prevenir o comportamento padrão e chamar a função principal de geração do AFD.
  */
 document.getElementById('afdForm').addEventListener('submit', function (e) {
-  e.preventDefault();
-  generateAfd();
+  e.preventDefault(); // Impede o envio tradicional do formulário (recarregar página)
+  generateAfd(); // Chama a função para gerar o AFD
 });
 
 /**
@@ -40,16 +38,12 @@ function calculateCRC16(data) {
   let crc = 0xffff;
   const polynomial = 0xa001; // Polinômio padrão para CRC-16-MODBUS
   for (let i = 0; i < data.length; i++) {
-    crc ^= data.charCodeAt(i);
+    crc ^= data.charCodeAt(i); // Calcula CRC
     for (let j = 0; j < 8; j++) {
-      if (crc & 0x0001) {
-        crc = (crc >> 1) ^ polynomial;
-      } else {
-        crc >>= 1;
-      }
+      crc = crc & 0x0001 ? (crc >> 1) ^ polynomial : crc >> 1;
     }
   }
-  return crc.toString(16).toUpperCase().padStart(4, '0');
+  return crc.toString(16).toUpperCase().padStart(4, '0'); // Retorna o CRC em formato hexadecimal
 }
 
 /**
@@ -58,9 +52,9 @@ function calculateCRC16(data) {
  * monta os registros e dispara o download do arquivo .txt.
  */
 function generateAfd() {
-  // 1. Coleta e formatação dos dados do formulário
+  // Coleta e formatação dos dados do formulário
   const idType = document.getElementById('idType').value;
-  const identifier = document.getElementById('identifier').value.padStart(12, '0');
+  const identifier = document.getElementById('identifier').value;
   const employerName = document.getElementById('employerName').value.padEnd(150, ' ');
   const employerCnpj = document.getElementById('employerCnpj').value.padStart(14, '0');
   const repNumber = document.getElementById('repNumber').value.padStart(17, '0');
@@ -69,61 +63,73 @@ function generateAfd() {
   const [year, month, day] = startDateInput.split('-').map(Number);
   const startDate = new Date(year, month - 1, day);
 
-  const days = parseInt(document.getElementById('days').value);
+  const days = parseInt(document.getElementById('days').value); // Quantidade de dias
 
-  // Lógica de coleta de horários flexível: coleta todos os inputs
-  // e filtra para usar apenas os que foram preenchidos pelo usuário.
+  // Coleta os horários preenchidos pelo usuário
   const allTimesInput = [document.getElementById('entry1').value, document.getElementById('exit1').value, document.getElementById('entry2').value, document.getElementById('exit2').value];
-  const timesPreenchidos = allTimesInput.filter((time) => time !== '');
+  const timesPreenchidos = allTimesInput.filter((time) => time !== ''); // Filtra os horários preenchidos
 
-  // 2. Inicialização de variáveis de controle
   let nsr = 1; // Número Sequencial de Registro
-  let records = []; // Array que armazenará todas as linhas do arquivo
-  let recordCounts = { type2: 0, type3: 0, type4: 0, type5: 0, type6: 0, type7: 0 };
+  let records = []; // Array que armazenará todos os registros
+  let recordCounts = { type2: 0, type3: 0, type4: 0, type5: 0, type6: 0, type7: 0 }; // Contagem dos tipos de registro
 
   const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + days - 1);
+  endDate.setDate(startDate.getDate() + days - 1); // Calcula a data final
 
-  // 3. Lógica de Geração baseada na Portaria selecionada
+  // Lógica para Portaria 1510 (PIS)
   if (idType === 'pis') {
-    // --- Bloco de geração para Portaria 1510 ---
     const header = ['000000000', '1', '1', employerCnpj, ''.padStart(12, '0'), employerName, repNumber, formatDate1510(startDate), formatDate1510(endDate), formatDate1510(new Date()), formatTime1510(new Date())].join('');
     records.push(header);
 
+    // Geração dos registros para cada dia
     for (let i = 0; i < days; i++) {
-      const currentDate = new Date(startDate);
-      currentDate.setDate(startDate.getDate() + i);
-      const dateStr = formatDate1510(currentDate);
+      // Esta variável irá controlar o dia da jornada, sendo atualizada apenas na virada da meia-noite.
+      const dataDoCiclo = new Date(startDate);
+      dataDoCiclo.setDate(startDate.getDate() + i);
 
-      // Loop dinâmico que gera registros apenas para os horários preenchidos
-      for (const time of timesPreenchidos) {
-        const timeFormatado = time.replace(':', '');
-        records.push([nsr.toString().padStart(9, '0'), '3', dateStr, timeFormatado, identifier].join(''));
+      for (let j = 0; j < timesPreenchidos.length; j++) {
+        // Se a hora da marcação atual for menor que a anterior, significa que virou o dia.
+        if (j > 0 && timesPreenchidos[j] < timesPreenchidos[j - 1]) {
+          dataDoCiclo.setDate(dataDoCiclo.getDate() + 1);
+        }
+
+        // A data é formatada a cada iteração, usando a data do ciclo (potencialmente atualizada)
+        const dateStr = formatDate1510(dataDoCiclo);
+        const timeFormatado = timesPreenchidos[j].replace(':', '');
+
+        records.push([nsr.toString().padStart(9, '0'), '3', dateStr, timeFormatado, identifier.padStart(12, '0')].join(''));
         nsr++;
         recordCounts.type3++;
       }
     }
 
     const trailer = ['999999999', recordCounts.type2.toString().padStart(9, '0'), recordCounts.type3.toString().padStart(9, '0'), recordCounts.type4.toString().padStart(9, '0'), recordCounts.type5.toString().padStart(9, '0'), '9'].join('');
-    records.push(trailer);
+    records.push(trailer); // Adiciona o trailer ao final dos registros
   } else {
-    // --- Bloco de geração para Portaria 671 (REP-C) ---
+    // Lógica para Portaria 671 (REP-C)
     const dataGeracao = new Date();
     const headerFields = ['000000000', '1', '1', employerCnpj, ''.padStart(14, '0'), employerName, repNumber, formatarDataHoraRegistro(startDate, '00:00').substring(0, 10), formatarDataHoraRegistro(endDate, '00:00').substring(0, 10), formatarDataHoraRegistro(dataGeracao, `${dataGeracao.getHours().toString().padStart(2, '0')}:${dataGeracao.getMinutes().toString().padStart(2, '0')}`), '003', '1', '98765432000195', 'REP-C EXEMPLO'.padEnd(30, ' '), ''];
     const headerWithoutCRC = headerFields.slice(0, -1).join('');
     headerFields[14] = calculateCRC16(headerWithoutCRC).padStart(4, '0');
     records.push(headerFields.join(''));
 
+    // Geração dos registros para cada dia da Portaria 671
     for (let i = 0; i < days; i++) {
-      const currentDate = new Date(startDate);
-      currentDate.setDate(startDate.getDate() + i);
+      // Esta variável irá controlar o dia da jornada, sendo atualizada apenas na virada da meia-noite.
+      const dataDoCiclo = new Date(startDate);
+      dataDoCiclo.setDate(startDate.getDate() + i);
 
-      // Loop dinâmico que gera registros apenas para os horários preenchidos
+      // Loop para cada horário preenchido
       for (let j = 0; j < timesPreenchidos.length; j++) {
-        const horaCompleta = timesPreenchidos[j];
-        const dataHoraFormatada = formatarDataHoraRegistro(currentDate, horaCompleta);
+        // Se a hora da marcação atual for menor que a anterior, significa que virou o dia.
+        if (j > 0 && timesPreenchidos[j] < timesPreenchidos[j - 1]) {
+          dataDoCiclo.setDate(dataDoCiclo.getDate() + 1);
+        }
 
-        const record = [nsr.toString().padStart(9, '0'), '3', dataHoraFormatada, identifier, ''];
+        // Usamos a dataDoCiclo (que pode ter sido atualizada) para a marcação atual.
+        const dataHoraFormatada = formatarDataHoraRegistro(dataDoCiclo, timesPreenchidos[j]);
+
+        const record = [nsr.toString().padStart(9, '0'), '3', dataHoraFormatada, identifier.padStart(12, '0'), ''];
         const recordWithoutCRC = record.slice(0, -1).join('');
         record[4] = calculateCRC16(recordWithoutCRC).padStart(4, '0');
         records.push(record.join(''));
@@ -133,10 +139,10 @@ function generateAfd() {
     }
 
     const trailer = ['999999999', recordCounts.type2.toString().padStart(9, '0'), recordCounts.type3.toString().padStart(9, '0'), recordCounts.type4.toString().padStart(9, '0'), recordCounts.type5.toString().padStart(9, '0'), recordCounts.type6.toString().padStart(9, '0'), recordCounts.type7.toString().padStart(9, '0'), '9'].join('');
-    records.push(trailer);
+    records.push(trailer); // Adiciona o trailer ao final dos registros
   }
 
-  // 4. Geração e Download do Arquivo
+  // Geração e Download do Arquivo
   const fileContent = records.join('\r\n'); // Une todas as linhas com quebra de linha padrão Windows
   const blob = new Blob([fileContent], { type: 'text/plain;charset=iso-8859-1' });
   const url = window.URL.createObjectURL(blob);
@@ -146,13 +152,6 @@ function generateAfd() {
   a.click(); // Simula o clique no link para iniciar o download
   window.URL.revokeObjectURL(url); // Libera a memória do objeto URL criado
 }
-
-// =================================================================================
-// --- FUNÇÕES AUXILIARES ---
-// As funções abaixo são utilitárias, chamadas pela função principal `generateAfd`
-// para formatar dados em padrões específicos exigidos por cada portaria.
-// Manter essa separação torna o código principal mais limpo e legível.
-// =================================================================================
 
 /**
  * Formata um objeto Date para o padrão de data da Portaria 1510 (DDMMYYYY).
@@ -190,9 +189,6 @@ function formatarDataHoraRegistro(data, horaMinuto) {
   const dia = data.getDate().toString().padStart(2, '0');
   const [hora, minuto] = horaMinuto.split(':');
 
-  // O fuso horário -03:00 é um requisito comum para sistemas no Brasil,
-  // representando o horário padrão de Brasília (UTC-3). Este valor é fixo
-  // conforme a especificação do leiaute do AFD.
   const fusoHorario = '-0300';
 
   return `${ano}-${mes}-${dia}T${hora}:${minuto}:00${fusoHorario}`;
